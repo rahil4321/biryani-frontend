@@ -7,20 +7,22 @@ function App() {
   const [orders, setOrders] = useState([]);
   const [quantity, setQuantity] = useState(1);
   
-  // Security & Auth State
+  // Admin Security State
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
   const [adminUsername, setAdminUsername] = useState('');
   const [adminPassword, setAdminPassword] = useState('');
   const [authError, setAuthError] = useState('');
 
-  // Customer Validation State (Ready for Backend Integration)
-  const [isCustomerValidated, setIsCustomerValidated] = useState(false);
+  // Customer Validation State
+  const [validationStep, setValidationStep] = useState('request'); // 'request', 'verify', 'validated'
+  const [customerEmail, setCustomerEmail] = useState('');
+  const [customerPhone, setCustomerPhone] = useState('');
   const [otpInput, setOtpInput] = useState('');
+  const [otpError, setOtpError] = useState('');
 
   const API_BASE_URL = 'https://biryani-backend-zz0w.onrender.com';
   const PRICE_PER_PLATE = 150;
 
-  // Check for existing JWT token on load
   useEffect(() => {
     const token = localStorage.getItem('adminToken');
     if (token) {
@@ -33,25 +35,20 @@ function App() {
     if (successMessage || isAdminAuthenticated) fetchOrders();
   }, [successMessage, isAdminAuthenticated]);
 
-  // --- NEW JWT LOGIN FLOW ---
+  // --- REAL JWT ADMIN LOGIN ---
   const handleAdminLogin = async (e) => {
     e.preventDefault();
     try {
-      /* NOTE: This is ready for your new backend route!
-        const res = await axios.post(`${API_BASE_URL}/admin/login`, { username: adminUsername, password: adminPassword });
-        localStorage.setItem('adminToken', res.data.token);
-      */
-      
-      // Temporary bypass until your backend JWT route is built:
-      if (adminUsername === 'admin' && adminPassword === 'securepassword123') {
-        localStorage.setItem('adminToken', 'temp_mock_jwt_token');
-        setIsAdminAuthenticated(true);
-        setAuthError('');
-      } else {
-        setAuthError('Invalid credentials');
-      }
+      const res = await axios.post(`${API_BASE_URL}/admin/login`, { 
+        username: adminUsername, 
+        password: adminPassword 
+      });
+      localStorage.setItem('adminToken', res.data.token);
+      setIsAdminAuthenticated(true);
+      setAuthError('');
+      fetchOrders(res.data.token);
     } catch (error) {
-      setAuthError('Server error during login.');
+      setAuthError('Invalid credentials');
     }
   };
 
@@ -61,20 +58,48 @@ function App() {
     setCurrentTab('customerForm');
   };
 
-  // --- ORDER SUBMISSION ---
-  const handleSubmit = async (event) => {
-    event.preventDefault();
-    if (!isCustomerValidated) {
-      alert("Please validate your phone number with an OTP first.");
+  // --- REAL OTP FLOW ---
+  const handleRequestOtp = async () => {
+    if (!customerEmail || !customerPhone) {
+      setOtpError('Please enter both email and phone.');
       return;
     }
+    try {
+      await axios.post(`${API_BASE_URL}/auth/request-otp`, { 
+        email: customerEmail, 
+        phone_number: customerPhone 
+      });
+      setValidationStep('verify');
+      setOtpError('');
+    } catch (error) {
+      setOtpError('Failed to send OTP. Check details.');
+    }
+  };
 
+  const handleVerifyOtp = async () => {
+    try {
+      await axios.post(`${API_BASE_URL}/auth/verify-otp`, { 
+        email: customerEmail, 
+        otp: otpInput 
+      });
+      setValidationStep('validated');
+      setOtpError('');
+    } catch (error) {
+      setOtpError('Invalid or expired OTP.');
+    }
+  };
+
+  // --- ORDER HANDLING ---
+  const handleSubmit = async (event) => {
+    event.preventDefault();
     const customer_name = event.target.customer_name.value;
-    const phone_number = event.target.phone_number.value;
 
     try {
-      // Your backend will trigger the Nodemailer email to Mom inside this route
-      await axios.post(`${API_BASE_URL}/orders`, { customer_name, phone_number, quantity });
+      await axios.post(`${API_BASE_URL}/orders`, { 
+        customer_name, 
+        phone_number: customerPhone, 
+        quantity 
+      });
       setSuccessMessage('Order placed successfully!');
       event.target.reset();
       setQuantity(1);
@@ -83,18 +108,22 @@ function App() {
     } catch (error) { alert('Failed to place order.'); }
   };
 
+  // Authenticated Data Fetching
   const fetchOrders = async (token = localStorage.getItem('adminToken')) => {
     try {
-      // In the future, pass the JWT token in the headers for security:
-      // const response = await axios.get(`${API_BASE_URL}/orders`, { headers: { Authorization: `Bearer ${token}` } });
-      const response = await axios.get(`${API_BASE_URL}/orders`);
+      const response = await axios.get(`${API_BASE_URL}/orders`, { 
+        headers: { Authorization: `Bearer ${token}` } 
+      });
       setOrders(response.data);
     } catch (error) { console.error(error); }
   };
 
   const toggleOrderStatus = async (id, status) => {
     const newStatus = status === 'Pending' ? 'Delivered' : 'Pending';
-    await axios.put(`${API_BASE_URL}/orders/${id}/status`, { status: newStatus });
+    const token = localStorage.getItem('adminToken');
+    await axios.put(`${API_BASE_URL}/orders/${id}/status`, { status: newStatus }, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
     fetchOrders();
   };
 
@@ -119,21 +148,39 @@ function App() {
             <img src="https://images.unsplash.com/photo-1563379091339-03b21ab4a4f8?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80" alt="Biryani" className="w-full h-48 md:h-56 object-cover rounded-2xl shadow-inner mb-2"/>
             <h2 className="text-3xl font-extrabold text-gray-800">Fresh & Hot</h2>
             
-            {!isCustomerValidated ? (
-              <div className="bg-amber-100/50 p-6 rounded-2xl border border-amber-200">
-                <h3 className="font-bold text-amber-800 mb-2">Account Validation</h3>
-                <p className="text-sm text-gray-600 mb-4">Enter your phone number to receive a login OTP.</p>
-                <div className="flex gap-2">
-                  <input type="tel" placeholder="Phone Number" className="w-full p-3 rounded-xl bg-white outline-none focus:ring-2 focus:ring-amber-400" />
-                  <button onClick={() => setIsCustomerValidated(true)} className="bg-amber-500 text-white px-4 py-2 rounded-xl font-bold whitespace-nowrap">Send OTP</button>
+            {validationStep === 'request' && (
+              <div className="bg-amber-100/50 p-6 rounded-2xl border border-amber-200 animate-in fade-in">
+                <h3 className="font-bold text-amber-800 mb-2">Security Verification</h3>
+                <p className="text-sm text-gray-600 mb-4">Enter your details to receive a 6-digit login code.</p>
+                {otpError && <p className="text-red-500 text-sm font-bold mb-2">{otpError}</p>}
+                <div className="flex flex-col gap-3">
+                  <input type="email" placeholder="Email Address" value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)} className="p-3 rounded-xl bg-white outline-none focus:ring-2 focus:ring-amber-400" />
+                  <input type="tel" placeholder="Phone Number" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} className="p-3 rounded-xl bg-white outline-none focus:ring-2 focus:ring-amber-400" />
+                  <button onClick={handleRequestOtp} className="bg-amber-500 text-white p-3 rounded-xl font-bold hover:bg-amber-600 transition">Send Code via Email</button>
                 </div>
               </div>
-            ) : (
+            )}
+
+            {validationStep === 'verify' && (
+              <div className="bg-amber-100/50 p-6 rounded-2xl border border-amber-200 animate-in fade-in">
+                <h3 className="font-bold text-amber-800 mb-2">Check your Email</h3>
+                <p className="text-sm text-gray-600 mb-4">We sent a 6-digit code to {customerEmail}</p>
+                {otpError && <p className="text-red-500 text-sm font-bold mb-2">{otpError}</p>}
+                <div className="flex gap-2">
+                  <input type="text" placeholder="123456" maxLength={6} value={otpInput} onChange={(e) => setOtpInput(e.target.value)} className="w-full p-3 rounded-xl bg-white outline-none focus:ring-2 focus:ring-amber-400 text-center text-xl font-bold tracking-widest" />
+                  <button onClick={handleVerifyOtp} className="bg-green-500 text-white px-6 rounded-xl font-bold hover:bg-green-600 transition">Verify</button>
+                </div>
+              </div>
+            )}
+
+            {validationStep === 'validated' && (
               <form onSubmit={handleSubmit} className="flex flex-col gap-6 animate-in fade-in">
                 {successMessage && <div className="bg-green-100 p-4 rounded-xl text-green-800 font-bold text-center">{successMessage}</div>}
                 
                 <input type="text" name="customer_name" placeholder="Full Name" required className="w-full p-4 rounded-xl bg-white border border-gray-100 focus:ring-2 focus:ring-orange-400 outline-none" />
-                <input type="tel" name="phone_number" placeholder="Phone Number" required pattern="[0-9]{10}" className="w-full p-4 rounded-xl bg-white border border-gray-100 focus:ring-2 focus:ring-orange-400 outline-none" />
+                <div className="p-4 rounded-xl bg-gray-100 border border-gray-200 text-gray-500 font-medium">
+                  Verified Phone: {customerPhone}
+                </div>
                 
                 <div className="flex items-center justify-between bg-white p-2 rounded-xl border border-gray-100">
                   <span className="ml-4 font-bold text-gray-500">Quantity</span>
@@ -191,7 +238,6 @@ function App() {
                       {orders.map(o => (
                         <tr key={o.id} className="hover:bg-white transition-colors">
                           <td className="px-6 py-4 text-sm font-semibold text-gray-500">
-                            {/* Formatting the created_at timestamp from your database */}
                             {new Date(o.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
                           </td>
                           <td className="px-6 py-4 font-bold text-gray-800">{o.customer_name}</td>
