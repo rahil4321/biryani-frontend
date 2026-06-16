@@ -5,226 +5,205 @@ function App() {
   const [currentTab, setCurrentTab] = useState('customerForm');
   const [successMessage, setSuccessMessage] = useState('');
   const [orders, setOrders] = useState([]);
-  
-  // New Interactive Quantity State
   const [quantity, setQuantity] = useState(1);
   
-  // Security State
+  // Security & Auth State
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
-  const [pinInput, setPinInput] = useState('');
-  const [pinError, setPinError] = useState(false);
+  const [adminUsername, setAdminUsername] = useState('');
+  const [adminPassword, setAdminPassword] = useState('');
+  const [authError, setAuthError] = useState('');
 
-  // Constants
+  // Customer Validation State (Ready for Backend Integration)
+  const [isCustomerValidated, setIsCustomerValidated] = useState(false);
+  const [otpInput, setOtpInput] = useState('');
+
   const API_BASE_URL = 'https://biryani-backend-zz0w.onrender.com';
   const PRICE_PER_PLATE = 150;
 
+  // Check for existing JWT token on load
   useEffect(() => {
-    if (successMessage || isAdminAuthenticated) {
-      fetchOrders();
+    const token = localStorage.getItem('adminToken');
+    if (token) {
+      setIsAdminAuthenticated(true);
+      fetchOrders(token);
     }
+  }, []);
+
+  useEffect(() => {
+    if (successMessage || isAdminAuthenticated) fetchOrders();
   }, [successMessage, isAdminAuthenticated]);
 
+  // --- NEW JWT LOGIN FLOW ---
+  const handleAdminLogin = async (e) => {
+    e.preventDefault();
+    try {
+      /* NOTE: This is ready for your new backend route!
+        const res = await axios.post(`${API_BASE_URL}/admin/login`, { username: adminUsername, password: adminPassword });
+        localStorage.setItem('adminToken', res.data.token);
+      */
+      
+      // Temporary bypass until your backend JWT route is built:
+      if (adminUsername === 'admin' && adminPassword === 'securepassword123') {
+        localStorage.setItem('adminToken', 'temp_mock_jwt_token');
+        setIsAdminAuthenticated(true);
+        setAuthError('');
+      } else {
+        setAuthError('Invalid credentials');
+      }
+    } catch (error) {
+      setAuthError('Server error during login.');
+    }
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('adminToken');
+    setIsAdminAuthenticated(false);
+    setCurrentTab('customerForm');
+  };
+
+  // --- ORDER SUBMISSION ---
   const handleSubmit = async (event) => {
     event.preventDefault();
+    if (!isCustomerValidated) {
+      alert("Please validate your phone number with an OTP first.");
+      return;
+    }
+
     const customer_name = event.target.customer_name.value;
     const phone_number = event.target.phone_number.value;
 
     try {
+      // Your backend will trigger the Nodemailer email to Mom inside this route
       await axios.post(`${API_BASE_URL}/orders`, { customer_name, phone_number, quantity });
-      setSuccessMessage('Order submitted successfully!');
+      setSuccessMessage('Order placed successfully!');
       event.target.reset();
-      setQuantity(1); // Reset quantity UI
+      setQuantity(1);
       setTimeout(() => setSuccessMessage(''), 3000);
       fetchOrders();
-    } catch (error) {
-      console.error('Error submitting order:', error);
-      alert('Failed to submit order.');
-    }
+    } catch (error) { alert('Failed to place order.'); }
   };
 
-  const fetchOrders = async () => {
+  const fetchOrders = async (token = localStorage.getItem('adminToken')) => {
     try {
+      // In the future, pass the JWT token in the headers for security:
+      // const response = await axios.get(`${API_BASE_URL}/orders`, { headers: { Authorization: `Bearer ${token}` } });
       const response = await axios.get(`${API_BASE_URL}/orders`);
       setOrders(response.data);
-    } catch (error) {
-      console.error('Error fetching orders:', error);
-    }
+    } catch (error) { console.error(error); }
   };
 
-  const toggleOrderStatus = async (id, currentStatus) => {
-    const newStatus = currentStatus === 'Pending' ? 'Delivered' : 'Pending';
-    try {
-      await axios.put(`${API_BASE_URL}/orders/${id}/status`, { status: newStatus });
-      fetchOrders();
-    } catch (error) {
-      console.error('Error updating status:', error);
-    }
+  const toggleOrderStatus = async (id, status) => {
+    const newStatus = status === 'Pending' ? 'Delivered' : 'Pending';
+    await axios.put(`${API_BASE_URL}/orders/${id}/status`, { status: newStatus });
+    fetchOrders();
   };
 
-  const handlePinSubmit = (e) => {
-    e.preventDefault();
-    if (pinInput === '1234') {
-      setIsAdminAuthenticated(true);
-      setPinError(false);
-    } else {
-      setPinError(true);
-      setPinInput('');
-    }
-  };
-
-  const totalOrders = orders.length;
-  const totalPlates = orders.reduce((sum, order) => sum + order.quantity, 0);
-  const expectedRevenue = totalPlates * PRICE_PER_PLATE;
-
+  // --- UI RENDER ---
   return (
-    <div className="min-h-screen bg-gradient-to-br from-amber-100 via-orange-50 to-amber-200 p-4 md:p-8 font-[Poppins]">
-      
-      {/* Import Poppins Font */}
-      <style dangerouslySetInnerHTML={{__html: `
-        @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;800&display=swap');
-      `}} />
+    <div className="min-h-screen bg-gradient-to-br from-amber-50 via-orange-50 to-amber-100 p-4 md:p-8 font-[Poppins] text-gray-900">
+      <style dangerouslySetInnerHTML={{__html: `@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;800&display=swap');`}} />
 
-      <div className="max-w-5xl mx-auto">
-        
-        {/* Glassmorphic Header */}
-        <nav className="flex justify-between items-center bg-white/40 backdrop-blur-xl border border-white/50 shadow-xl rounded-3xl p-5 mb-10">
-          <h1 className="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-amber-600 to-orange-600 tracking-tight ml-4">
-            Biryani Co.
-          </h1>
-          <div className="flex bg-white/50 p-1 rounded-2xl border border-white/50 shadow-inner">
-            <button
-              onClick={() => setCurrentTab('customerForm')}
-              className={`px-6 py-2.5 rounded-xl font-semibold transition-all duration-300 ${currentTab === 'customerForm' ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-lg' : 'text-amber-800 hover:bg-white/60'}`}
-            >
-              Order
-            </button>
-            <button
-              onClick={() => setCurrentTab('adminDashboard')}
-              className={`px-6 py-2.5 rounded-xl font-semibold transition-all duration-300 ${currentTab === 'adminDashboard' ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-lg' : 'text-amber-800 hover:bg-white/60'}`}
-            >
-              Admin
-            </button>
+      <div className="max-w-4xl mx-auto">
+        {/* Navbar */}
+        <nav className="flex justify-between items-center bg-white/60 backdrop-blur-xl border border-white/50 shadow-2xl rounded-3xl p-4 mb-8">
+          <h1 className="text-2xl md:text-3xl font-extrabold text-amber-600 ml-2 tracking-tighter">Biryani Co.</h1>
+          <div className="flex bg-white/50 p-1 rounded-2xl">
+            <button onClick={() => setCurrentTab('customerForm')} className={`px-4 md:px-5 py-2 rounded-xl font-bold transition ${currentTab === 'customerForm' ? 'bg-orange-500 text-white shadow-lg' : 'text-amber-800'}`}>Order</button>
+            <button onClick={() => setCurrentTab('adminDashboard')} className={`px-4 md:px-5 py-2 rounded-xl font-bold transition ${currentTab === 'adminDashboard' ? 'bg-orange-500 text-white shadow-lg' : 'text-amber-800'}`}>Admin</button>
           </div>
         </nav>
 
         {/* CUSTOMER FORM */}
-        {currentTab === 'customerForm' && (
-          <form onSubmit={handleSubmit} className="bg-white/60 backdrop-blur-2xl border border-white/60 p-8 md:p-10 rounded-[2rem] shadow-2xl flex flex-col gap-8 max-w-lg mx-auto transform transition-all duration-500 hover:shadow-orange-500/10">
-            <div className="text-center">
-              <h2 className="text-4xl font-extrabold text-gray-800 mb-2">Fresh Biryani</h2>
-              <p className="text-amber-700 font-medium">Delivered hot to your door.</p>
-            </div>
+        {currentTab === 'customerForm' ? (
+          <div className="max-w-xl mx-auto bg-white/70 backdrop-blur-2xl border border-white/50 p-6 md:p-8 rounded-[2rem] shadow-2xl flex flex-col gap-6">
+            <img src="https://images.unsplash.com/photo-1563379091339-03b21ab4a4f8?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80" alt="Biryani" className="w-full h-48 md:h-56 object-cover rounded-2xl shadow-inner mb-2"/>
+            <h2 className="text-3xl font-extrabold text-gray-800">Fresh & Hot</h2>
             
-            {successMessage && (
-              <div className="bg-green-100/80 backdrop-blur-md border border-green-200 text-green-800 p-4 rounded-2xl text-center font-bold shadow-inner">
-                {successMessage}
-              </div>
-            )}
-            
-            <div className="space-y-5">
-              <input type="text" name="customer_name" placeholder="Full Name" required className="w-full px-6 py-4 rounded-2xl bg-white/70 border border-white focus:outline-none focus:ring-4 focus:ring-amber-500/30 transition-all font-semibold text-gray-800 shadow-sm placeholder-gray-400" />
-              <input type="tel" name="phone_number" placeholder="Phone Number" required pattern="[0-9]{10}" className="w-full px-6 py-4 rounded-2xl bg-white/70 border border-white focus:outline-none focus:ring-4 focus:ring-amber-500/30 transition-all font-semibold text-gray-800 shadow-sm placeholder-gray-400" />
-              
-              {/* Premium Quantity Selector */}
-              <div className="bg-white/70 rounded-2xl border border-white p-2 shadow-sm flex items-center justify-between">
-                <span className="ml-4 font-bold text-gray-600 uppercase tracking-wider text-sm">Quantity</span>
-                <div className="flex items-center gap-4 bg-gray-100/50 p-1 rounded-xl">
-                  <button type="button" onClick={() => setQuantity(Math.max(1, quantity - 1))} className="w-12 h-12 rounded-lg bg-white shadow-sm font-bold text-xl text-amber-600 hover:bg-amber-50 transition-colors flex items-center justify-center active:scale-95">
-                    -
-                  </button>
-                  <span className="w-8 text-center font-extrabold text-2xl text-gray-800">{quantity}</span>
-                  <button type="button" onClick={() => setQuantity(quantity + 1)} className="w-12 h-12 rounded-lg bg-amber-500 shadow-sm font-bold text-xl text-white hover:bg-amber-600 transition-colors flex items-center justify-center active:scale-95">
-                    +
-                  </button>
+            {!isCustomerValidated ? (
+              <div className="bg-amber-100/50 p-6 rounded-2xl border border-amber-200">
+                <h3 className="font-bold text-amber-800 mb-2">Account Validation</h3>
+                <p className="text-sm text-gray-600 mb-4">Enter your phone number to receive a login OTP.</p>
+                <div className="flex gap-2">
+                  <input type="tel" placeholder="Phone Number" className="w-full p-3 rounded-xl bg-white outline-none focus:ring-2 focus:ring-amber-400" />
+                  <button onClick={() => setIsCustomerValidated(true)} className="bg-amber-500 text-white px-4 py-2 rounded-xl font-bold whitespace-nowrap">Send OTP</button>
                 </div>
               </div>
-            </div>
-
-            <button type="submit" className="w-full py-5 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-600 text-white font-extrabold text-xl shadow-xl shadow-orange-500/30 hover:shadow-orange-500/50 hover:-translate-y-1 transition-all duration-300 active:scale-95">
-              Place Order — ₹{quantity * PRICE_PER_PLATE}
-            </button>
-          </form>
-        )}
-
-        {/* ADMIN TAB */}
-        {currentTab === 'adminDashboard' && (
-          <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-            
-            {/* PIN SECURITY SCREEN */}
-            {!isAdminAuthenticated ? (
-              <form onSubmit={handlePinSubmit} className="bg-white/60 backdrop-blur-2xl border border-white/60 p-10 rounded-[2rem] shadow-2xl flex flex-col gap-6 max-w-md mx-auto mt-12 text-center">
-                <div className="w-20 h-20 bg-gradient-to-tr from-amber-400 to-orange-500 rounded-full mx-auto flex items-center justify-center shadow-lg shadow-orange-500/30 mb-2">
-                  <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+            ) : (
+              <form onSubmit={handleSubmit} className="flex flex-col gap-6 animate-in fade-in">
+                {successMessage && <div className="bg-green-100 p-4 rounded-xl text-green-800 font-bold text-center">{successMessage}</div>}
+                
+                <input type="text" name="customer_name" placeholder="Full Name" required className="w-full p-4 rounded-xl bg-white border border-gray-100 focus:ring-2 focus:ring-orange-400 outline-none" />
+                <input type="tel" name="phone_number" placeholder="Phone Number" required pattern="[0-9]{10}" className="w-full p-4 rounded-xl bg-white border border-gray-100 focus:ring-2 focus:ring-orange-400 outline-none" />
+                
+                <div className="flex items-center justify-between bg-white p-2 rounded-xl border border-gray-100">
+                  <span className="ml-4 font-bold text-gray-500">Quantity</span>
+                  <div className="flex items-center gap-3">
+                    <button type="button" onClick={() => setQuantity(Math.max(1, quantity - 1))} className="w-10 h-10 bg-gray-100 rounded-lg font-bold">-</button>
+                    <span className="font-extrabold text-xl w-6 text-center">{quantity}</span>
+                    <button type="button" onClick={() => setQuantity(quantity + 1)} className="w-10 h-10 bg-orange-500 text-white rounded-lg font-bold">+</button>
+                  </div>
                 </div>
-                <h2 className="text-3xl font-extrabold text-gray-800">Secure Vault</h2>
-                <input 
-                  type="password" maxLength={4} value={pinInput} onChange={(e) => setPinInput(e.target.value)} placeholder="PIN" autoFocus
-                  className="w-full px-6 py-5 text-center text-3xl tracking-[1em] rounded-2xl bg-white/80 border border-white focus:outline-none focus:ring-4 focus:ring-amber-500/30 shadow-inner font-bold text-gray-800"
-                />
-                {pinError && <p className="text-red-500 font-bold bg-red-100/50 py-2 rounded-lg">Invalid Access Code</p>}
-                <button type="submit" className="w-full py-4 rounded-2xl bg-gray-900 text-white font-bold text-lg hover:bg-gray-800 hover:-translate-y-1 transition-all duration-300 shadow-xl active:scale-95 mt-2">
-                  Authenticate
+
+                <button type="submit" className="w-full py-4 rounded-2xl bg-orange-500 text-white font-extrabold text-lg shadow-xl hover:bg-orange-600 transition">
+                  Order Now — ₹{quantity * PRICE_PER_PLATE}
                 </button>
               </form>
+            )}
+          </div>
+        ) : (
+
+        /* ADMIN DASHBOARD */
+          <div className="bg-white/70 backdrop-blur-2xl border border-white/50 p-6 md:p-8 rounded-[2rem] shadow-2xl">
+            {!isAdminAuthenticated ? (
+              <form onSubmit={handleAdminLogin} className="flex flex-col gap-4 text-center max-w-sm mx-auto py-8">
+                <div className="w-16 h-16 bg-gray-900 rounded-full mx-auto flex items-center justify-center mb-4 shadow-lg">
+                  <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+                </div>
+                <h2 className="text-2xl font-bold text-gray-800 mb-2">Secure JWT Login</h2>
+                <input type="text" value={adminUsername} onChange={(e) => setAdminUsername(e.target.value)} placeholder="Admin Username" required className="p-4 rounded-xl border border-gray-200 outline-none focus:ring-2 focus:ring-gray-900" />
+                <input type="password" value={adminPassword} onChange={(e) => setAdminPassword(e.target.value)} placeholder="Password" required className="p-4 rounded-xl border border-gray-200 outline-none focus:ring-2 focus:ring-gray-900" />
+                {authError && <p className="text-red-500 font-bold text-sm">{authError}</p>}
+                <button type="submit" className="py-4 bg-gray-900 text-white rounded-xl font-bold shadow-xl hover:bg-gray-800 transition">Authenticate</button>
+              </form>
             ) : (
-
-            /* UNLOCKED DASHBOARD */
-            <div className="space-y-6">
-              
-              {/* Executive Revenue Cards */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="bg-white/60 backdrop-blur-xl p-8 rounded-3xl shadow-xl border border-white/50 transform transition-all duration-300 hover:-translate-y-1">
-                  <span className="text-gray-500 text-sm font-extrabold uppercase tracking-widest mb-2 block">Total Orders</span>
-                  <span className="text-5xl font-black text-gray-800">{totalOrders}</span>
+              <div className="animate-in fade-in">
+                <div className="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
+                  <div>
+                    <h2 className="text-2xl font-black text-gray-800">Operations Vault</h2>
+                    <p className="text-gray-500 font-medium">Total Revenue: <span className="text-green-600 font-bold">₹{orders.reduce((sum, o) => sum + (o.quantity * PRICE_PER_PLATE), 0)}</span></p>
+                  </div>
+                  <button onClick={handleLogout} className="px-6 py-2 bg-red-50 text-red-600 rounded-xl font-bold hover:bg-red-100 transition">Log Out</button>
                 </div>
-                <div className="bg-white/60 backdrop-blur-xl p-8 rounded-3xl shadow-xl border border-white/50 transform transition-all duration-300 hover:-translate-y-1">
-                  <span className="text-gray-500 text-sm font-extrabold uppercase tracking-widest mb-2 block">Plates Sold</span>
-                  <span className="text-5xl font-black text-amber-600">{totalPlates}</span>
-                </div>
-                <div className="bg-gradient-to-br from-gray-900 to-gray-800 p-8 rounded-3xl shadow-2xl shadow-gray-900/30 transform transition-all duration-300 hover:-translate-y-1 relative overflow-hidden">
-                  <div className="absolute -right-10 -top-10 w-32 h-32 bg-amber-500/20 rounded-full blur-2xl"></div>
-                  <span className="text-gray-400 text-sm font-extrabold uppercase tracking-widest mb-2 block relative z-10">Expected Rev</span>
-                  <span className="text-5xl font-black text-white relative z-10">₹{expectedRevenue}</span>
-                </div>
-              </div>
-
-              {/* Glass Table */}
-              <div className="bg-white/70 backdrop-blur-2xl rounded-[2rem] shadow-2xl border border-white/60 overflow-hidden">
-                <div className="p-8 border-b border-white/40 flex justify-between items-center bg-white/30">
-                  <h2 className="text-2xl font-black text-gray-800">Kitchen Operations</h2>
-                  <button onClick={() => setIsAdminAuthenticated(false)} className="px-4 py-2 bg-white/50 rounded-lg text-sm font-bold text-gray-500 hover:text-red-600 hover:bg-red-50 transition-colors shadow-sm">
-                    Lock Terminal
-                  </button>
-                </div>
-                <div className="overflow-x-auto p-4">
-                  <table className="w-full table-auto border-collapse min-w-[800px]">
-                    <thead>
-                      <tr>
-                        <th className="px-6 py-4 text-left text-xs font-black text-gray-400 uppercase tracking-widest">Customer</th>
-                        <th className="px-6 py-4 text-left text-xs font-black text-gray-400 uppercase tracking-widest">Contact</th>
-                        <th className="px-6 py-4 text-left text-xs font-black text-gray-400 uppercase tracking-widest">Qty</th>
-                        <th className="px-6 py-4 text-left text-xs font-black text-gray-400 uppercase tracking-widest">Status</th>
-                        <th className="px-6 py-4 text-right text-xs font-black text-gray-400 uppercase tracking-widest">Control</th>
+                
+                <div className="overflow-x-auto bg-white/50 rounded-2xl border border-gray-100 shadow-sm">
+                  <table className="w-full text-left whitespace-nowrap">
+                    <thead className="bg-gray-50/50">
+                      <tr className="text-gray-400 uppercase text-xs tracking-wider">
+                        <th className="px-6 py-4">Date</th>
+                        <th className="px-6 py-4">Customer</th>
+                        <th className="px-6 py-4">Contact</th>
+                        <th className="px-6 py-4">Qty</th>
+                        <th className="px-6 py-4">Status</th>
+                        <th className="px-6 py-4">Action</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-white/40">
-                      {orders.map((order) => (
-                        <tr key={order.id} className="hover:bg-white/50 transition-colors">
-                          <td className="px-6 py-5 text-gray-800 font-extrabold text-lg">{order.customer_name}</td>
-                          <td className="px-6 py-5 text-gray-500 font-semibold">{order.phone_number}</td>
-                          <td className="px-6 py-5 text-amber-600 font-black text-2xl">{order.quantity}</td>
-                          <td className="px-6 py-5">
-                            <span className={`px-4 py-2 rounded-xl text-xs font-black tracking-widest uppercase ${order.status === 'Delivered' ? 'bg-green-100 text-green-700 shadow-inner' : 'bg-orange-100 text-orange-700 shadow-inner'}`}>
-                              {order.status || 'Pending'}
+                    <tbody className="divide-y divide-gray-100">
+                      {orders.map(o => (
+                        <tr key={o.id} className="hover:bg-white transition-colors">
+                          <td className="px-6 py-4 text-sm font-semibold text-gray-500">
+                            {/* Formatting the created_at timestamp from your database */}
+                            {new Date(o.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                          </td>
+                          <td className="px-6 py-4 font-bold text-gray-800">{o.customer_name}</td>
+                          <td className="px-6 py-4 font-medium text-gray-600">{o.phone_number}</td>
+                          <td className="px-6 py-4 font-black text-amber-500 text-lg">{o.quantity}</td>
+                          <td className="px-6 py-4">
+                            <span className={`px-3 py-1.5 rounded-full text-xs font-black tracking-wide uppercase ${o.status === 'Delivered' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}`}>
+                              {o.status}
                             </span>
                           </td>
-                          <td className="px-6 py-5 text-right">
-                            <button
-                              onClick={() => toggleOrderStatus(order.id, order.status || 'Pending')}
-                              className={`px-6 py-3 text-sm font-black rounded-xl transition-all shadow-md hover:-translate-y-0.5 active:scale-95 ${order.status === 'Delivered' ? 'bg-white text-gray-400 hover:text-gray-600' : 'bg-amber-500 text-white hover:bg-amber-600 hover:shadow-amber-500/30'}`}
-                            >
-                              {order.status === 'Delivered' ? 'Revert' : 'Mark Delivered'}
-                            </button>
+                          <td className="px-6 py-4">
+                            <button onClick={() => toggleOrderStatus(o.id, o.status)} className="text-xs bg-gray-100 px-4 py-2 rounded-lg font-bold hover:bg-gray-200 transition">Toggle</button>
                           </td>
                         </tr>
                       ))}
@@ -232,7 +211,6 @@ function App() {
                   </table>
                 </div>
               </div>
-            </div>
             )}
           </div>
         )}
